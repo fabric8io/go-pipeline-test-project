@@ -4,26 +4,44 @@ def dummy
 goNode{
   def organisation = 'fabric8io'
   def project = 'go-pipeline-test-project'
-  container(name: 'go') {
-    stage ('build binary'){
-      sh "go get github.com/${organisation}/${project}"
-      sh "cd /go/src/github.com/${organisation}/${project}; make"
+  def buildPath = "/go/src/github.com/${organisation}/${project}"
 
-      sh "cp -R /go/src/github.com/${organisation}/${project}/out ."
-    }
-  }
+  sh "mkdir -p /go/src/github.com/${organisation}/${project}"
 
-  container(name: 'docker') {
-    def imageName = 'docker.io/${organisation}/${project}:latest'
-    stage ('build image'){
-      sh "cd /go/src/github.com/${organisation}/${project}; docker build -t ${imageName} ."
-    }
-
-    stage ('push image'){
+  dir("/go/src/github.com/${organisation}/${project}") {
+      checkout scm
       sh 'pwd'
-      sh 'cd ~ && pwd'
-      sh 'ls -al ~/.docker'
-      sh "cd /go/src/github.com/${organisation}/${project}; docker push ${imageName}"
-    }
+      sh 'ls -al'
+
+      container(name: 'go') {
+          sh 'pwd'
+          sh 'ls -al'
+          stage ('build binary'){
+            sh 'chmod 600 /root/.ssh-git/ssh-key'
+            sh 'chmod 600 /root/.ssh-git/ssh-key.pub'
+            sh 'chmod 700 /root/.ssh-git'
+
+            sh "git remote set-url origin git@github.com:${config.project}.git"
+            
+            sh 'gobump -f version/VERSION patch'
+            sh "git commit -am 'Version bump'"
+            sh 'git push -u origin master'
+            sh "make release"
+          }
+      }
+
+      container(name: 'docker') {
+        def imageName = "docker.io/${organisation}/${project}:latest"
+        stage ('build image'){
+          sh "docker build -t ${imageName} ."
+        }
+
+        stage ('push image'){
+          sh 'pwd'
+          sh 'cd ~ && pwd'
+          sh 'ls -al ~/.docker'
+          sh "docker push ${imageName}"
+        }
+      }
   }
 }
